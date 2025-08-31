@@ -10,6 +10,7 @@ import queue
 import sys
 import threading
 import time
+from typing import Any, Dict
 
 from loguru import logger
 from pydantic import BaseModel, HttpUrl
@@ -59,6 +60,13 @@ class PersonalityPrompt(BaseModel):
         return {"role": field, "content": value}
 
 
+class RemoteAudioConfig(BaseModel):
+    """Configuration for remote audio streaming."""
+    ws_port: int = 8765
+    vad_threshold: float = 0.8
+    max_clients: int = 10
+
+
 class GladosConfig(BaseModel):
     """
     Configuration model for the Glados voice assistant.
@@ -78,6 +86,7 @@ class GladosConfig(BaseModel):
     voice: str
     announcement: str | None
     personality_preprompt: list[PersonalityPrompt]
+    remote_audio: RemoteAudioConfig | None = None
 
     @classmethod
     def from_yaml(cls, path: str | Path, key_to_config: tuple[str, ...] = ("Glados",)) -> "GladosConfig":
@@ -112,7 +121,15 @@ class GladosConfig(BaseModel):
         for key in key_to_config:
             config = config[key]
 
-        return cls.model_validate(config)
+        # Extract remote audio configuration if present
+        remote_audio_config = None
+        if "RemoteAudio" in data:
+            remote_audio_config = RemoteAudioConfig.model_validate(data["RemoteAudio"])
+
+        glados_config = cls.model_validate(config)
+        glados_config.remote_audio = remote_audio_config
+        
+        return glados_config
 
     def to_chat_messages(self) -> list[dict[str, str]]:
         """Convert personality preprompt to chat message format."""
@@ -309,7 +326,13 @@ class Glados:
         tts_model: SpeechSynthesizerProtocol
         tts_model = get_speech_synthesizer(config.voice)
 
-        audio_io = get_audio_system(backend_type=config.audio_io)
+        # Prepare audio system parameters
+        audio_params: Dict[str, Any] = {}
+        if config.audio_io == "remote" and config.remote_audio:
+            audio_params["ws_port"] = config.remote_audio.ws_port
+            audio_params["vad_threshold"] = config.remote_audio.vad_threshold
+
+        audio_io = get_audio_system(backend_type=config.audio_io, **audio_params)
 
         return cls(
             asr_model=asr_model,

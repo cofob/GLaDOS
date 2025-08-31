@@ -1,0 +1,39 @@
+version: '3.8'
+
+services:
+  glados-remote:
+    build: 
+      context: .
+      dockerfile: Dockerfile.remote
+    ports:
+      - '${API_PORT:-5050}:5050'  # HTTP API port
+      - '${WS_PORT:-8765}:8765'  # WebSocket audio streaming port
+    environment:
+      - GLADOS_CONFIG=/app/configs/remote_config.yaml
+      - OLLAMA_URL=http://host.docker.internal:11434  # For local Ollama access
+    volumes:
+      - ./configs:/app/configs:ro
+      - ./models:/app/models:ro
+      - ./data:/app/data:ro
+    restart: unless-stopped
+    networks:
+      - glados-network
+
+  # Optional: Run Ollama in the same network for remote deployment
+  # Comment this out if you're using a separate Ollama instance
+  ollama:
+    image: ollama/ollama:latest
+    ports:
+      - '11434:11434'
+    volumes:
+      - ollama_data:/root/.ollama
+    restart: unless-stopped
+    networks:
+      - glados-network
+
+networks:
+  glados-network:
+    driver: bridge
+
+volumes:
+  ollama_data:

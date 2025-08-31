@@ -4,12 +4,12 @@ This package provides an abstraction layer for audio input and output operations
 allowing the Glados engine to work with different audio backends interchangeably.
 
 Classes:
-    AudioIO: Abstract interface for audio input/output operations
+    AudioProtocol: Abstract interface for audio input/output operations
     SoundDeviceAudioIO: Implementation using the sounddevice library
-    WebSocketAudioIO: Implementation using WebSockets for network streaming
+    RemoteAudioIO: Implementation using WebSockets for remote audio streaming
 
 Functions:
-    create_audio_io: Factory function to create AudioIO instances
+    get_audio_system: Factory function to create AudioProtocol instances
 """
 
 import queue
@@ -35,15 +35,17 @@ class AudioProtocol(Protocol):
 
 
 # Factory function
-def get_audio_system(backend_type: str = "sounddevice", vad_threshold: float | None = None) -> AudioProtocol:
+def get_audio_system(backend_type: str = "sounddevice", vad_threshold: float | None = None, **kwargs) -> AudioProtocol:
     """
     Factory function to get an instance of an audio I/O system based on the specified backend type.
 
     Parameters:
         backend_type (str): The type of audio backend to use:
             - "sounddevice": Uses the sounddevice library for local audio I/O
-            - "websocket": Network-based audio I/O (not yet implemented)
+            - "remote": Uses WebSockets for remote audio streaming from clients
         vad_threshold (float | None): Optional threshold for voice activity detection
+        **kwargs: Additional parameters for specific backends:
+            - For "remote": ws_port (int) - WebSocket port for audio streaming
 
     Returns:
         AudioProtocol: An instance of the requested audio I/O system
@@ -57,8 +59,14 @@ def get_audio_system(backend_type: str = "sounddevice", vad_threshold: float | N
         return SoundDeviceAudioIO(
             vad_threshold=vad_threshold,
         )
-    elif backend_type == "websocket":
-        raise ValueError("WebSocket audio backend is not yet implemented.")
+    elif backend_type == "remote":
+        from .remote_io import RemoteAudioIO
+
+        ws_port = kwargs.get("ws_port", 8765)
+        return RemoteAudioIO(
+            vad_threshold=vad_threshold,
+            ws_port=ws_port
+        )
     else:
         raise ValueError(f"Unsupported audio backend type: {backend_type}")
 

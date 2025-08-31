@@ -30,6 +30,7 @@ dev = [
     "types-PyYAML",
 ]
 api = ["litestar[standard,structlog]>=2.15.1"]
+remote = ["websockets>=13.0"]
 
 [project.scripts]
 glados = "glados.cli:main"

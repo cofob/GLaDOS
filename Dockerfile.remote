@@ -1,0 +1,60 @@
+FROM python:3.12-slim
+
+RUN apt-get update && apt-get install -y \
+  libportaudio2 \
+  portaudio19-dev \
+  git \
+  && rm -rf /var/lib/apt/lists/*
+
+RUN pip install uv
+
+WORKDIR /app
+COPY pyproject.toml README.md ./
+COPY models/ ./models/
+COPY src/ ./src/
+COPY configs/ ./configs/
+
+# Install dependencies including websockets for remote audio
+RUN uv sync --extra api --extra cpu --no-dev \
+  && uv add websockets
+
+# Download models
+RUN uv run glados download
+
+# Expose both API and WebSocket ports
+EXPOSE 5050 8765
+
+# Create a startup script that can handle both API and remote audio
+COPY <<EOF /app/start_remote.sh
+#!/bin/bash
+set -e
+
+# Start the API server in the background
+uv run litestar --app glados.api.app:app run --host 0.0.0.0 --port 5050 &
+
+# Start GLaDOS with remote audio configuration
+uv run python -c "
+import sys
+sys.path.insert(0, '/app/src')
+from glados.core.engine import Glados
+from glados.core.engine import GladosConfig
+
+# Load configuration from environment variable or default
+config_path = '/app/configs/remote_config.yaml'
+if [ -n \"\$GLADOS_CONFIG\" ]; then
+    config_path = \"\$GLADOS_CONFIG\"
+fi
+
+print(f'Loading GLaDOS configuration from: {config_path}')
+glados_config = GladosConfig.from_yaml(config_path)
+glados = Glados.from_config(glados_config)
+
+print('Starting GLaDOS with remote audio support...')
+glados.run()
+"
+
+EOF
+
+RUN chmod +x /app/start_remote.sh
+
+CMD ["/app/start_remote.sh"]
